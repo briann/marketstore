@@ -175,9 +175,14 @@ func (gd *GdaxFetcher) Run() {
 			rates, err := client.GetHistoricRates(symbol, params)
 			if err != nil {
 				log.Info("Response error: %v", err)
-				// including rate limit case
 				time.Sleep(time.Second)
-				continue
+				if err.Error() == "Public rate limit exceeded" {
+					log.Info("Retrying (due to rate limit) %s %v - %v", symbol, timeStart, timeEnd)
+					rates, err = client.GetHistoricRates(symbol, params)
+				}
+				if err != nil {
+					continue
+				}
 			}
 			if len(rates) == 0 {
 				log.Info("len(rates) == 0")
