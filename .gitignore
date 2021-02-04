@@ -12,3 +12,4 @@ marketstore
 *.exe
 *.test
 .vscode
+mkts.yml
