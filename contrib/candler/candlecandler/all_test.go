@@ -32,9 +32,10 @@ type TestSuite struct {
 func (s *TestSuite) SetUpSuite(c *C) {
 	s.Rootdir = c.MkDir()
 	s.ItemsWritten = MakeDummyStockDir(s.Rootdir, true, false)
-	executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false, true) // WAL Bypass
-	s.DataDirectory = executor.ThisInstance.CatalogDir
-	s.WALFile = executor.ThisInstance.WALFile
+	metadata, _, _ := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false, true,
+	) // WAL Bypass
+	s.DataDirectory = metadata.CatalogDir
+	s.WALFile = metadata.WALFile
 }
 
 func (s *TestSuite) TearDownSuite(c *C) {
@@ -42,7 +43,7 @@ func (s *TestSuite) TearDownSuite(c *C) {
 }
 
 func (s *TestSuite) TestCandleCandler(c *C) {
-	cdl, am := CandleCandler{}.New(false)
+	cdl, am := CandleCandler{}.New()
 	ds := io.NewDataShapeVector(
 		[]string{"Open", "High", "Low", "Close", "Volume"},
 		[]io.EnumElementType{io.FLOAT32, io.FLOAT32, io.FLOAT32, io.FLOAT32, io.INT32},
@@ -66,14 +67,14 @@ func (s *TestSuite) TestCandleCandler(c *C) {
 	endDate := time.Date(2001, time.October, 15, 12, 15, 0, 0, time.UTC)
 	q.SetRange(startDate, endDate)
 	parsed, _ := q.Parse()
-	scanner, err := executor.NewReader(parsed, false, false)
+	scanner, err := executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, _ := scanner.Read()
 	for _, cs := range csm {
 		epoch := cs.GetEpoch()
 		c.Assert(time.Unix(epoch[0], 0).UTC(), Equals, startDate)
 		c.Assert(time.Unix(epoch[len(epoch)-1], 0).UTC(), Equals, endDate)
-		err = cdl.Accum(cs)
+		err = cdl.Accum(cs, s.DataDirectory)
 		c.Assert(err == nil, Equals, true)
 	}
 	cols := cdl.Output()

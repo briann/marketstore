@@ -62,8 +62,8 @@ type DestructiveWALTest2 struct {
 func (s *TestSuite) SetUpSuite(c *C) {
 	s.Rootdir = c.MkDir()
 	s.ItemsWritten = MakeDummyCurrencyDir(s.Rootdir, true, false)
-	executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false)
-	s.DataDirectory = executor.ThisInstance.CatalogDir
+	metadata, _, _ := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false)
+	s.DataDirectory = metadata.CatalogDir
 	s.WALFile = executor.ThisInstance.WALFile
 }
 
@@ -103,13 +103,13 @@ func (s *TestSuite) TestQueryMulti(c *C) {
 	eNames := []string{"Open", "High", "Low", "Close", "Volume"}
 	dsv := NewDataShapeVector(eNames, eTypes)
 	tbinfo := NewTimeBucketInfo(*tf, tbk.GetPathToYearFiles(s.Rootdir), "Test", int16(2016), dsv, FIXED)
-	err := executor.ThisInstance.CatalogDir.AddTimeBucket(tbk, tbinfo)
+	err := s.DataDirectory.AddTimeBucket(tbk, tbinfo)
 	c.Assert(err, IsNil)
 	tgc := executor.ThisInstance.TXNPipe
 	/*
 		Write some data
 	*/
-	tbi, err := executor.ThisInstance.CatalogDir.GetLatestTimeBucketInfoFromKey(tbk)
+	tbi, err := s.DataDirectory.GetLatestTimeBucketInfoFromKey(tbk)
 	c.Assert(err, IsNil)
 	writer, err := executor.NewWriter(tbi, tgc, s.DataDirectory)
 	c.Assert(err == nil, Equals, true)
@@ -133,7 +133,7 @@ func (s *TestSuite) TestQueryMulti(c *C) {
 	q.AddRestriction("Timeframe", "1Min")
 	q.SetRowLimit(LAST, 5)
 	parsed, _ := q.Parse()
-	reader, _ := executor.NewReader(parsed, false, false)
+	reader, _ := executor.NewReader(parsed, false)
 	csm, _ := reader.Read()
 	c.Assert(len(csm) >= 4, Equals, true)
 	for _, cs := range csm {
@@ -148,7 +148,7 @@ func (s *TestSuite) TestWriteVariable(c *C) {
 	eNames := []string{"Bid", "Ask"}
 	dsv := NewDataShapeVector(eNames, eTypes)
 	tbinfo := NewTimeBucketInfo(*tf, tbk.GetPathToYearFiles(s.Rootdir), "Test", int16(2016), dsv, VARIABLE)
-	err := executor.ThisInstance.CatalogDir.AddTimeBucket(tbk, tbinfo)
+	err := s.DataDirectory.AddTimeBucket(tbk, tbinfo)
 	c.Assert(err, IsNil)
 	tgc := executor.ThisInstance.TXNPipe
 
@@ -161,7 +161,7 @@ func (s *TestSuite) TestWriteVariable(c *C) {
 	q.AddRestriction("Timeframe", "1Min")
 	q.SetStart(time.Date(2016, time.November, 1, 12, 0, 0, 0, time.UTC))
 	parsed, _ := q.Parse()
-	tbi, err := executor.ThisInstance.CatalogDir.GetLatestTimeBucketInfoFromKey(tbk)
+	tbi, err := s.DataDirectory.GetLatestTimeBucketInfoFromKey(tbk)
 	c.Assert(err, IsNil)
 	writer, err := executor.NewWriter(tbi, tgc, s.DataDirectory)
 	c.Assert(err == nil, Equals, true)
@@ -185,7 +185,7 @@ func (s *TestSuite) TestWriteVariable(c *C) {
 	/*
 		Read the data back
 	*/
-	reader, err := executor.NewReader(parsed, false, false)
+	reader, err := executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err := reader.Read()
 	c.Assert(err == nil, Equals, true)
@@ -258,7 +258,7 @@ func (s *TestSuite) TestWriteVariable(c *C) {
 
 	// Test last N query
 	parsed, _ = q.Parse()
-	reader, err = executor.NewReader(parsed, false, false)
+	reader, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err = reader.Read()
 	for _, cs := range csm {
@@ -273,7 +273,7 @@ func (s *TestSuite) TestWriteVariable(c *C) {
 	// Test first N query
 	q.SetRowLimit(FIRST, 10)
 	parsed, _ = q.Parse()
-	reader, err = executor.NewReader(parsed, false, false)
+	reader, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err = reader.Read()
 	for _, cs := range csm {
@@ -299,7 +299,7 @@ func (s *TestSuite) TestFileRead(c *C) {
 	if err != nil {
 		c.Fatalf(fmt.Sprintf("Failed to parse query"), err)
 	}
-	scanner, err := executor.NewReader(parsed, false, false)
+	scanner, err := executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	// Sum up the total number of items in the query set for validation
 	var nitems, recordlen int
@@ -335,10 +335,9 @@ func (s *TestSuite) TestFileRead(c *C) {
 func (s *TestSuite) TestDelete(c *C) {
 	NY, _ := time.LoadLocation("America/New_York")
 	// First write some data we can delete
-	d := executor.ThisInstance.CatalogDir
 	tgc := executor.ThisInstance.TXNPipe
 	dataItemKey := "TEST-DELETE/OHLCV/1Min"
-	dataItemPath := filepath.Join(d.GetPath(), dataItemKey)
+	dataItemPath := filepath.Join(s.DataDirectory.GetPath(), dataItemKey)
 	dsv := NewDataShapeVector(
 		[]string{"Open", "High", "Low", "Close"},
 		[]EnumElementType{FLOAT32, FLOAT32, FLOAT32, FLOAT32},
@@ -346,7 +345,7 @@ func (s *TestSuite) TestDelete(c *C) {
 	tbi := NewTimeBucketInfo(*utils.TimeframeFromString("1Min"), dataItemPath, "Test item", 2018,
 		dsv, FIXED)
 	tbk := NewTimeBucketKey(dataItemKey)
-	err := d.AddTimeBucket(tbk, tbi)
+	err := s.DataDirectory.AddTimeBucket(tbk, tbi)
 	c.Assert(err, Equals, nil)
 
 	writer, err := executor.NewWriter(tbi, tgc, s.DataDirectory)
@@ -379,7 +378,7 @@ func (s *TestSuite) TestDelete(c *C) {
 	}
 
 	// Read the data before delete
-	r, err := executor.NewReader(parsed, false, false)
+	r, err := executor.NewReader(parsed, false)
 	csm, err := r.Read()
 	for _, cs := range csm {
 		if cs.Len() != 1000 {
@@ -429,7 +428,7 @@ func (s *TestSuite) TestSortedFiles(c *C) {
 	if err != nil {
 		c.Fatalf(fmt.Sprintf("Failed to parse query %s", err))
 	}
-	scanner, err := executor.NewReader(parsed, false, false)
+	scanner, err := executor.NewReader(parsed, false)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -465,7 +464,7 @@ func (s *TestSuite) TestSortedFiles(c *C) {
 	if err != nil {
 		c.Fatalf(fmt.Sprintf("Failed to parse query %s", err))
 	}
-	scanner, err = executor.NewReader(parsed, false, false)
+	scanner, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err = scanner.Read()
 	for _, cs := range csm {
@@ -490,7 +489,7 @@ func (s *TestSuite) TestSortedFiles(c *C) {
 	if err != nil {
 		c.Fatalf(fmt.Sprintf("Failed to parse query %s", err))
 	}
-	scanner, err = executor.NewReader(parsed, false, false)
+	scanner, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err = scanner.Read()
 	for _, cs := range csm {
@@ -508,7 +507,7 @@ func (s *TestSuite) TestSortedFiles(c *C) {
 		time.Date(2001, time.January, 15, 12, 5, 0, 0, time.UTC),
 	)
 	parsed, err = q.Parse()
-	scanner, err = executor.NewReader(parsed, false, false)
+	scanner, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err = scanner.Read()
 	for _, cs := range csm {
@@ -528,7 +527,7 @@ func (s *TestSuite) TestCrossYear(c *C) {
 	endDate := time.Date(2002, time.October, 15, 12, 5, 0, 0, time.UTC)
 	q.SetRange(startDate, endDate)
 	parsed, _ := q.Parse()
-	scanner, err := executor.NewReader(parsed, false, false)
+	scanner, err := executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, _ := scanner.Read()
 	for _, cs := range csm {
@@ -553,7 +552,7 @@ func (s *TestSuite) TestLastN(c *C) {
 	)
 	q.SetRowLimit(LAST, 100)
 	parsed, _ := q.Parse()
-	scanner, err := executor.NewReader(parsed, false, false)
+	scanner, err := executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, _ := scanner.Read()
 	for _, cs := range csm {
@@ -593,7 +592,7 @@ func (s *TestSuite) TestLastN(c *C) {
 	)
 	q.SetRowLimit(LAST, 10)
 	parsed, _ = q.Parse()
-	scanner, err = executor.NewReader(parsed, false, false)
+	scanner, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, _ = scanner.Read()
 	for _, cs := range csm {
@@ -613,7 +612,7 @@ func (s *TestSuite) TestLastN(c *C) {
 	)
 	q.SetRowLimit(LAST, 10)
 	parsed, _ = q.Parse()
-	scanner, err = executor.NewReader(parsed, false, false)
+	scanner, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, _ = scanner.Read()
 	for _, cs := range csm {
@@ -633,7 +632,7 @@ func (s *TestSuite) TestLastN(c *C) {
 	)
 	q.SetRowLimit(LAST, 10)
 	parsed, _ = q.Parse()
-	scanner, err = executor.NewReader(parsed, false, false)
+	scanner, err = executor.NewReader(parsed, false)
 	c.Assert(err, IsNil)
 	csm, err = scanner.Read()
 	c.Assert(err, IsNil)
@@ -647,9 +646,8 @@ func (s *TestSuite) TestLastN(c *C) {
 }
 
 func (s *TestSuite) TestAddSymbolThenWrite(c *C) {
-	d := executor.ThisInstance.CatalogDir
 	dataItemKey := "TEST/1Min/OHLCV"
-	dataItemPath := filepath.Join(d.GetPath(), dataItemKey)
+	dataItemPath := filepath.Join(s.DataDirectory.GetPath(), dataItemKey)
 	dsv := NewDataShapeVector(
 		[]string{"Open", "High", "Low", "Close", "Volume"},
 		[]EnumElementType{FLOAT32, FLOAT32, FLOAT32, FLOAT32, INT32},
@@ -657,15 +655,15 @@ func (s *TestSuite) TestAddSymbolThenWrite(c *C) {
 	tbinfo := NewTimeBucketInfo(*utils.TimeframeFromString("1Min"), dataItemPath, "Test item", 2016,
 		dsv, FIXED)
 	tbk := NewTimeBucketKey(dataItemKey)
-	err := d.AddTimeBucket(tbk, tbinfo)
+	err := s.DataDirectory.AddTimeBucket(tbk, tbinfo)
 	c.Assert(err, Equals, nil)
 
-	q := NewQuery(d)
+	q := NewQuery(s.DataDirectory)
 	q.AddRestriction("Symbol", "TEST")
 	pr, _ := q.Parse()
-	tbi, err := executor.ThisInstance.CatalogDir.GetLatestTimeBucketInfoFromKey(tbk)
+	tbi, err := s.DataDirectory.GetLatestTimeBucketInfoFromKey(tbk)
 	c.Assert(err, IsNil)
-	w, err := executor.NewWriter(tbi, executor.ThisInstance.TXNPipe, d)
+	w, err := executor.NewWriter(tbi, executor.ThisInstance.TXNPipe, s.DataDirectory)
 	c.Assert(err, Equals, nil)
 	ts := time.Now().UTC()
 	row := OHLCVtest{0, 100., 200., 300., 400., 1000}
@@ -675,10 +673,10 @@ func (s *TestSuite) TestAddSymbolThenWrite(c *C) {
 	err = executor.ThisInstance.WALFile.FlushToWAL(executor.ThisInstance.TXNPipe)
 	c.Assert(err == nil, Equals, true)
 
-	q = NewQuery(d)
+	q = NewQuery(s.DataDirectory)
 	q.AddRestriction("Symbol", "TEST")
 	pr, _ = q.Parse()
-	rd, err := executor.NewReader(pr, false, false)
+	rd, err := executor.NewReader(pr, false)
 	c.Assert(err == nil, Equals, true)
 	columnSeries, err := rd.Read()
 	c.Assert(err == nil, Equals, true)
@@ -701,7 +699,7 @@ func (s *TestSuite) TestWriter(c *C) {
 	tgc := executor.ThisInstance.TXNPipe
 	dataItemKey := "TEST/1Min/OHLCV"
 	tbk := NewTimeBucketKey(dataItemKey)
-	tbi, err := executor.ThisInstance.CatalogDir.GetLatestTimeBucketInfoFromKey(tbk)
+	tbi, err := s.DataDirectory.GetLatestTimeBucketInfoFromKey(tbk)
 	c.Assert(err, IsNil)
 	writer, err := executor.NewWriter(tbi, tgc, s.DataDirectory)
 	c.Assert(err == nil, Equals, true)
@@ -717,7 +715,7 @@ func (s *TestSuite) TestWriter(c *C) {
 func (s *DestructiveWALTests) SetUpSuite(c *C) {
 	s.Rootdir = c.MkDir()
 	s.ItemsWritten = MakeDummyCurrencyDir(s.Rootdir, true, false)
-	instanceConfig, shutdownPending := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false)
+	instanceConfig, shutdownPending, _ := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false)
 	s.DataDirectory = instanceConfig.CatalogDir
 	s.WALFile = executor.ThisInstance.WALFile
 	s.shutdownPending = shutdownPending
@@ -730,7 +728,7 @@ func (s *DestructiveWALTests) TearDownSuite(c *C) {
 func (s *DestructiveWALTests) TestWALWrite(c *C) {
 	var err error
 	mockInstanceID := time.Now().UTC().UnixNano()
-	s.WALFile, err = executor.NewWALFile(s.Rootdir, mockInstanceID, nil, false,
+	s.WALFile, err = executor.NewWALFile(s.Rootdir, mockInstanceID, nil,
 		false, s.shutdownPending, &sync.WaitGroup{},
 	)
 	if err != nil {
@@ -857,7 +855,7 @@ func (s *DestructiveWALTests) TestBrokenWAL(c *C) {
 func (s *DestructiveWALTest2) SetUpSuite(c *C) {
 	s.Rootdir = c.MkDir()
 	s.ItemsWritten = MakeDummyCurrencyDir(s.Rootdir, true, false)
-	instanceConfig, shutdownPending := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false)
+	instanceConfig, shutdownPending, _ := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false)
 	s.DataDirectory = instanceConfig.CatalogDir
 	s.WALFile = executor.ThisInstance.WALFile
 	s.shutdownPending = shutdownPending
@@ -1045,7 +1043,7 @@ func forwardBackwardScan(numRecs int, d *Directory, c *C) {
 	q.SetRange(startDate, endDate)
 	q.SetRowLimit(FIRST, numRecs)
 	parsed, _ := q.Parse()
-	scanner, err := executor.NewReader(parsed, false, false)
+	scanner, err := executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err := scanner.Read()
 	for key, cs := range csm {
@@ -1067,7 +1065,7 @@ func forwardBackwardScan(numRecs int, d *Directory, c *C) {
 	*/
 	q.SetRowLimit(LAST, numRecs)
 	parsed, _ = q.Parse()
-	scanner, err = executor.NewReader(parsed, false, false)
+	scanner, err = executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err = scanner.Read()
 	for key, cs := range csm {
@@ -1115,7 +1113,7 @@ func addTGData(root *Directory, tgc *executor.TransactionPipe, number int, mixup
 		q.AddRestriction("Timeframe", "1Min")
 		q.SetRowLimit(LAST, number)
 		parsed, _ := q.Parse()
-		scanner, err := executor.NewReader(parsed, false, false)
+		scanner, err := executor.NewReader(parsed, false)
 		if err != nil {
 			fmt.Printf("Failed to create a new reader")
 			return nil, err
@@ -1130,7 +1128,7 @@ func addTGData(root *Directory, tgc *executor.TransactionPipe, number int, mixup
 		for key, cs := range csmSym {
 			// Add this result data to the overall
 			csm[key] = cs
-			tbi, err := executor.ThisInstance.CatalogDir.GetLatestTimeBucketInfoFromKey(&key)
+			tbi, err := root.GetLatestTimeBucketInfoFromKey(&key)
 			tbiByKey[key] = tbi
 			writerByKey[key], err = executor.NewWriter(tbi, tgc, root)
 			if err != nil {

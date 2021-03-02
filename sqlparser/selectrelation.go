@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/alpacahq/marketstore/v4/catalog"
 	"strings"
 	"time"
 
@@ -14,20 +15,21 @@ import (
 
 type SelectRelation struct {
 	ExecutableStatement
-	Limit                      int
-	OrderBy                    []SortItem
-	SelectList                 []*AliasedIdentifier
-	IsPrimary, IsSelectAll     bool
-	PrimaryTargetName          []string
-	Subquery                   *SelectRelation
-	WherePredicate             IMSTree // Runtime predicates
-	SetQuantifier              SetQuantifierEnum
-	StaticPredicates           StaticPredicateGroup
-	DisableVariableCompression bool
+	Limit                  int
+	OrderBy                []SortItem
+	SelectList             []*AliasedIdentifier
+	IsPrimary, IsSelectAll bool
+	PrimaryTargetName      []string
+	Subquery               *SelectRelation
+	WherePredicate         IMSTree // Runtime predicates
+	SetQuantifier          SetQuantifierEnum
+	StaticPredicates       StaticPredicateGroup
 }
 
-func NewSelectRelation(disableVariableCompression bool) (sr *SelectRelation) {
-	return &SelectRelation{DisableVariableCompression: disableVariableCompression}
+func NewSelectRelation(catalogDir *catalog.Directory) (sr *SelectRelation) {
+	return &SelectRelation{ExecutableStatement: ExecutableStatement{
+		CatalogDirectory: catalogDir,
+	}}
 }
 
 func (sr *SelectRelation) Materialize() (outputColumnSeries *io.ColumnSeries, err error) {
@@ -84,8 +86,7 @@ func (sr *SelectRelation) Materialize() (outputColumnSeries *io.ColumnSeries, er
 		if key == nil {
 			return nil, fmt.Errorf("Table name must match \"one/two/three\" for three directory levels")
 		}
-		d := executor.ThisInstance.CatalogDir
-		dsv, err = d.GetDataShapes(key)
+		dsv, err = sr.CatalogDirectory.GetDataShapes(key)
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +130,7 @@ func (sr *SelectRelation) Materialize() (outputColumnSeries *io.ColumnSeries, er
 	if inputColumnSeries != nil {
 		outputColumnSeries = inputColumnSeries
 	} else {
-		q := planner.NewQuery(executor.ThisInstance.CatalogDir)
+		q := planner.NewQuery(sr.CatalogDirectory)
 		q.AddTargetKey(key)
 
 		/*
@@ -184,7 +185,7 @@ func (sr *SelectRelation) Materialize() (outputColumnSeries *io.ColumnSeries, er
 		if err != nil {
 			return nil, err
 		}
-		scanner, err := executor.NewReader(parsed, sr.disableVariableCompression, false)
+		scanner, err := executor.NewReader(parsed, false)
 		if err != nil {
 			return nil, err
 		}
@@ -419,7 +420,7 @@ func (sr *SelectRelation) Materialize() (outputColumnSeries *io.ColumnSeries, er
 				if agg == nil {
 					return nil, fmt.Errorf("No function in the UDA Registry named \"%s\"", aggName)
 				}
-				aggfunc, argMap := agg.New(sr.disableVariableCompression)
+				aggfunc, argMap := agg.New()
 
 				if sl.FunctionCall.IsAsterisk {
 					/*
@@ -468,7 +469,7 @@ func (sr *SelectRelation) Materialize() (outputColumnSeries *io.ColumnSeries, er
 				/*
 					Execute the aggregate function
 				*/
-				err := aggfunc.Accum(outputColumnSeries)
+				err := aggfunc.Accum(outputColumnSeries, sr.CatalogDirectory)
 				if err != nil {
 					return nil, err
 				}

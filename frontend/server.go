@@ -3,6 +3,7 @@ package frontend
 import (
 	"context"
 	"errors"
+	"github.com/alpacahq/marketstore/v4/catalog"
 	"net/http"
 	"time"
 
@@ -19,18 +20,19 @@ var (
 	argsNilError   = errors.New("Arguments are nil, can not query using nil arguments")
 )
 
-func NewDataService(disableVariableCompression, enableLastKnown bool, rootDir string) *DataService {
+func NewDataService(enableLastKnown bool, rootDir string, catDir *catalog.Directory,
+) *DataService {
 	return &DataService{
-		disableVariableCompression: disableVariableCompression,
 		enableLastKnown:            enableLastKnown,
 		rootDir:                    rootDir,
+		catalogDir:                 catDir,
 	}
 }
 
 type DataService struct {
-	disableVariableCompression bool
 	enableLastKnown            bool
 	rootDir                    string
+	catalogDir                 *catalog.Directory
 }
 
 func (s *DataService) Init() {}
@@ -46,7 +48,8 @@ func (s *RpcServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.RPCTotalRequestDuration.Observe(time.Since(start).Seconds())
 }
 
-func NewServer(disableVariableCompression, enableLastKnown bool, rootDir string) (*RpcServer, *DataService) {
+func NewServer(enableLastKnown bool, rootDir string, catDir *catalog.Directory,
+) (*RpcServer, *DataService) {
 	s := &RpcServer{
 		Server: rpc.NewServer(),
 	}
@@ -55,7 +58,7 @@ func NewServer(disableVariableCompression, enableLastKnown bool, rootDir string)
 	s.RegisterCodec(msgpack2.NewCodec(), "application/x-msgpack")
 	s.RegisterInterceptFunc(intercept)
 	s.RegisterAfterFunc(after)
-	service := NewDataService(disableVariableCompression, enableLastKnown, rootDir)
+	service := NewDataService(enableLastKnown, rootDir, catDir)
 	service.Init()
 	err := s.RegisterService(service, "")
 	if err != nil {

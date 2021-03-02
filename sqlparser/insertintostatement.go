@@ -3,6 +3,7 @@ package sqlparser
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/alpacahq/marketstore/v4/catalog"
 	"time"
 
 	"github.com/alpacahq/marketstore/v4/executor"
@@ -17,11 +18,13 @@ type InsertIntoStatement struct {
 	ColumnAliases  []string
 }
 
-func NewInsertIntoStatement(tableName, queryText string, selectRelation *SelectRelation) (is *InsertIntoStatement) {
+func NewInsertIntoStatement(tableName, queryText string, selectRelation *SelectRelation,
+	catDir *catalog.Directory) (is *InsertIntoStatement) {
 	is = new(InsertIntoStatement)
 	is.QueryText = queryText
 	is.TableName = tableName
 	is.SelectRelation = selectRelation
+	is.CatalogDirectory = catDir
 	return is
 }
 
@@ -51,7 +54,7 @@ func (is *InsertIntoStatement) Materialize() (outputColumnSeries *io.ColumnSerie
 			is.TableName)
 	}
 
-	fi, err := executor.ThisInstance.CatalogDir.GetLatestTimeBucketInfoFromKey(targetMK)
+	fi, err := is.CatalogDirectory.GetLatestTimeBucketInfoFromKey(targetMK)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +106,7 @@ func (is *InsertIntoStatement) Materialize() (outputColumnSeries *io.ColumnSerie
 		Write the data
 	*/
 	tgc := executor.ThisInstance.TXNPipe
-	catDir := executor.ThisInstance.CatalogDir
+	catDir := is.CatalogDirectory
 	wal := executor.ThisInstance.WALFile
 	tbi, err := catDir.GetLatestTimeBucketInfoFromKey(targetMK)
 	if err != nil {

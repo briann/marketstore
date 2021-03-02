@@ -3,6 +3,7 @@ package candlecandler
 import (
 	"fmt"
 
+	"github.com/alpacahq/marketstore/v4/catalog"
 	"github.com/alpacahq/marketstore/v4/contrib/candler"
 	"github.com/alpacahq/marketstore/v4/uda"
 	"github.com/alpacahq/marketstore/v4/utils/functions"
@@ -36,7 +37,7 @@ type CandleCandler struct {
 	*candler.Candler
 }
 
-func (c CandleCandler) New(_ bool) (ica uda.AggInterface, am *functions.ArgumentMap) {
+func (c CandleCandler) New() (ica uda.AggInterface, am *functions.ArgumentMap) {
 	ca := &CandleCandler{candler.NewCandler(requiredColumns, optionalColumns)}
 	return ca, ca.ArgMap
 }
@@ -54,7 +55,7 @@ func (ca *CandleCandler) GetInitArgs() []io.DataShape {
 /*
 	Accum() sends new data to the aggregate
 */
-func (ca *CandleCandler) Accum(cols io.ColumnInterface) error {
+func (ca *CandleCandler) Accum(cols io.ColumnInterface, _ *catalog.Directory) error {
 	if cols.Len() == 0 {
 		return fmt.Errorf("Empty input to Accum")
 	}

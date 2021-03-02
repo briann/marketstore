@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/alpacahq/marketstore/v4/catalog"
 	"github.com/alpacahq/marketstore/v4/uda"
 	"github.com/alpacahq/marketstore/v4/utils/functions"
 	"github.com/alpacahq/marketstore/v4/utils/io"
@@ -47,7 +48,7 @@ func (ca *Count) GetInitArgs() []io.DataShape {
 /*
 	Accum() sends new data to the aggregate
 */
-func (ca *Count) Accum(cols io.ColumnInterface) error {
+func (ca *Count) Accum(cols io.ColumnInterface, _ *catalog.Directory) error {
 	ca.Sum += int64(cols.Len())
 	return nil
 }
@@ -56,7 +57,7 @@ func (ca *Count) Accum(cols io.ColumnInterface) error {
 	Creates a new count using the arguments of the specific implementation
 	for inputColumns and optionalInputColumns
 */
-func (c Count) New(_ bool) (out uda.AggInterface, am *functions.ArgumentMap) {
+func (c Count) New() (out uda.AggInterface, am *functions.ArgumentMap) {
 	ca := NewCount(requiredColumns, optionalColumns)
 	return ca, ca.ArgMap
 }

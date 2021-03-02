@@ -33,7 +33,7 @@ type TestSuite struct {
 func (s *TestSuite) SetUpSuite(c *C) {
 	s.Rootdir = c.MkDir()
 	s.ItemsWritten = MakeDummyCurrencyDir(s.Rootdir, false, false)
-	instanceConfig, _ := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false, true) // WAL Bypass
+	instanceConfig, _, _ := executor.NewInstanceSetup(s.Rootdir, nil, 5, true, true, false, true) // WAL Bypass
 	s.DataDirectory = instanceConfig.CatalogDir
 	s.WALFile = instanceConfig.WALFile
 	s.TXNPipe = instanceConfig.TXNPipe
@@ -44,7 +44,7 @@ func (s *TestSuite) TearDownSuite(c *C) {
 }
 
 func (s *TestSuite) TestTickCandler(c *C) {
-	cdl, am := TickCandler{}.New(false)
+	cdl, am := TickCandler{}.New()
 	ds := io.NewDataShapeVector([]string{"Bid", "Ask"}, []io.EnumElementType{io.FLOAT32, io.FLOAT32})
 	// Sum and Avg are optional inputs, let's map them arbitrarily
 	//am.MapInputColumn("Sum", ds[1:])
@@ -58,7 +58,7 @@ func (s *TestSuite) TestTickCandler(c *C) {
 	/*
 		We expect an error with an empty input arg set
 	*/
-	err = cdl.Accum(&io.Rows{})
+	err = cdl.Accum(&io.Rows{}, s.DataDirectory)
 	c.Assert(err != nil, Equals, true)
 
 	/*
@@ -75,14 +75,14 @@ func (s *TestSuite) TestTickCandler(c *C) {
 	q.AddRestriction("Timeframe", "1Min")
 	q.SetStart(time.Date(2016, time.November, 1, 12, 0, 0, 0, time.UTC))
 	parsed, _ := q.Parse()
-	reader, err := executor.NewReader(parsed, false, false)
+	reader, err := executor.NewReader(parsed, false)
 	c.Assert(err == nil, Equals, true)
 	csm, err := reader.Read()
 	c.Assert(err == nil, Equals, true)
 	c.Assert(len(csm), Equals, 1)
 	for _, cs := range csm {
 		c.Assert(cs.Len(), Equals, 200)
-		err = cdl.Accum(cs)
+		err = cdl.Accum(cs, s.DataDirectory)
 		c.Assert(err == nil, Equals, true)
 	}
 	rows := cdl.Output()
@@ -104,7 +104,7 @@ func (s *TestSuite) TestTickCandler(c *C) {
 	cdl.Reset()
 	for _, cs := range csm {
 		c.Assert(cs.Len(), Equals, 200)
-		err = cdl.Accum(cs)
+		err = cdl.Accum(cs, s.DataDirectory)
 		c.Assert(err == nil, Equals, true)
 	}
 	rows = cdl.Output()

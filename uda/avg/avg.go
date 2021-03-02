@@ -7,6 +7,7 @@ import (
 	"github.com/alpacahq/marketstore/v4/uda"
 	"github.com/alpacahq/marketstore/v4/utils/functions"
 	"github.com/alpacahq/marketstore/v4/utils/io"
+	"github.com/alpacahq/marketstore/v4/catalog"
 )
 
 var (
@@ -42,7 +43,7 @@ func (av *Avg) GetInitArgs() []io.DataShape {
 /*
 	Accum() sends new data to the aggregate
 */
-func (av *Avg) Accum(cols io.ColumnInterface) error {
+func (av *Avg) Accum(cols io.ColumnInterface, _ *catalog.Directory) error {
 	if cols.Len() == 0 {
 		return nil
 	}
@@ -65,7 +66,7 @@ func (av *Avg) Accum(cols io.ColumnInterface) error {
 	Creates a new count using the arguments of the specific implementation
 	for inputColumns and optionalInputColumns
 */
-func (m Avg) New(_ bool) (out uda.AggInterface, am *functions.ArgumentMap) {
+func (m Avg) New() (out uda.AggInterface, am *functions.ArgumentMap) {
 	av := NewCount(requiredColumns, optionalColumns)
 	return av, av.ArgMap
 }

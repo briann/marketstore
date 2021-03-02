@@ -80,15 +80,6 @@ func executeStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to parse configuration file error: %v", err.Error())
 	}
 
-	// New grpc server for marketstore API.
-	grpcServer := grpc.NewServer(
-		grpc.MaxSendMsgSize(config.GRPCMaxSendMsgSize),
-		grpc.MaxRecvMsgSize(config.GRPCMaxRecvMsgSize),
-	)
-	pb.RegisterMarketstoreServer(grpcServer,
-		frontend.NewGRPCService(config.DisableVariableCompression, config.EnableLastKnown, config.RootDirectory),
-	)
-
 	// New gRPC stream server for replication.
 	opts := []grpc.ServerOption{
 		grpc.MaxSendMsgSize(config.GRPCMaxSendMsgSize),
@@ -139,7 +130,7 @@ func executeStart(cmd *cobra.Command, args []string) error {
 
 	start := time.Now()
 
-	instanceConfig, shutdownPending := executor.NewInstanceSetup(
+	instanceConfig, shutdownPending, walWG := executor.NewInstanceSetup(
 		config.RootDirectory,
 		rs,
 		config.WALRotateInterval,
@@ -154,11 +145,23 @@ func executeStart(cmd *cobra.Command, args []string) error {
 	log.Info("startup time: %s", startupTime)
 
 	// New server.
-	server, _ := frontend.NewServer(config.DisableVariableCompression, config.EnableLastKnown, config.RootDirectory)
+	server, _ := frontend.NewServer(config.EnableLastKnown, config.RootDirectory,
+		instanceConfig.CatalogDir,
+	)
 
 	// Set rpc handler.
 	log.Info("launching rpc data server...")
 	http.Handle("/rpc", server)
+
+	// New grpc server for marketstore API.
+	grpcServer := grpc.NewServer(
+		grpc.MaxSendMsgSize(config.GRPCMaxSendMsgSize),
+		grpc.MaxRecvMsgSize(config.GRPCMaxRecvMsgSize),
+	)
+	pb.RegisterMarketstoreServer(grpcServer,
+		frontend.NewGRPCService(config.EnableLastKnown, config.RootDirectory,
+			instanceConfig.CatalogDir),
+	)
 
 	// Set websocket handler.
 	log.Info("initializing websocket...")
@@ -221,7 +224,7 @@ func executeStart(cmd *cobra.Command, args []string) error {
 				atomic.StoreUint32(&frontend.Queryable, uint32(0))
 				log.Info("waiting a grace period of %v to shutdown...", config.StopGracePeriod)
 				time.Sleep(config.StopGracePeriod)
-				shutdown(shutdownPending, instanceConfig.WALWg)
+				shutdown(shutdownPending, walWG)
 			}
 		}
 	}()

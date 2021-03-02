@@ -98,7 +98,7 @@ func (s *DataService) Query(r *http.Request, reqs *MultiQueryRequest, response *
 			if err != nil {
 				return err
 			}
-			es, err := sqlparser.NewExecutableStatement(s.disableVariableCompression, ast.Mtree)
+			es, err := sqlparser.NewExecutableStatement(s.catalogDir, ast.Mtree)
 			if err != nil {
 				return err
 			}
@@ -143,7 +143,7 @@ func (s *DataService) Query(r *http.Request, reqs *MultiQueryRequest, response *
 					dest.String())
 			} else if len(Symbols) == 1 && Symbols[0] == "*" {
 				// replace the * "symbol" with a list all known actual symbols
-				allSymbols := executor.ThisInstance.CatalogDir.GatherCategoriesAndItems()["Symbol"]
+				allSymbols := s.catalogDir.GatherCategoriesAndItems()["Symbol"]
 				symbols := make([]string, 0, len(allSymbols))
 				for symbol := range allSymbols {
 					symbols = append(symbols, symbol)
@@ -188,8 +188,8 @@ func (s *DataService) Query(r *http.Request, reqs *MultiQueryRequest, response *
 				start, end,
 				limitRecordCount, limitFromStart,
 				columns,
-				s.disableVariableCompression,
 				s.enableLastKnown,
+				s.catalogDir,
 			)
 			if err != nil {
 				return err
@@ -200,7 +200,7 @@ func (s *DataService) Query(r *http.Request, reqs *MultiQueryRequest, response *
 			*/
 			if len(req.Functions) != 0 {
 				for tbkStr, cs := range csm {
-					csOut, err := runAggFunctions(req.Functions, cs, tbkStr, s.disableVariableCompression)
+					csOut, err := runAggFunctions(req.Functions, cs, tbkStr, s.catalogDir)
 					if err != nil {
 						return err
 					}
@@ -257,12 +257,12 @@ func (s *DataService) ListSymbols(r *http.Request, req *ListSymbolsRequest, resp
 
 	// TBK format (e.g. ["AMZN/1Min/TICK", "AAPL/1Sec/OHLCV", ...])
 	if req != nil && req.Format == "tbk" {
-		response.Results = catalog.ListTimeBucketKeyNames(executor.ThisInstance.CatalogDir)
+		response.Results = catalog.ListTimeBucketKeyNames(s.catalogDir)
 		return nil
 	}
 
 	// Symbol format (e.g. ["AMZN", "AAPL", ...])
-	symbols := executor.ThisInstance.CatalogDir.GatherCategoriesAndItems()["Symbol"]
+	symbols := s.catalogDir.GatherCategoriesAndItems()["Symbol"]
 	response.Results = make([]string, len(symbols))
 	cnt := 0
 	for symbol := range symbols {
@@ -278,9 +278,9 @@ Utility functions
 
 func executeQuery(tbk *io.TimeBucketKey, start, end time.Time, LimitRecordCount int,
 	LimitFromStart bool, columns []string,
-	disableVariableCompression, enableLastKnown bool,
+	enableLastKnown bool, catDir *catalog.Directory,
 ) (io.ColumnSeriesMap, error) {
-	query := planner.NewQuery(executor.ThisInstance.CatalogDir)
+	query := planner.NewQuery(catDir)
 
 	/*
 		Alter timeframe inside key to ensure it matches a queryable TF
@@ -318,7 +318,7 @@ func executeQuery(tbk *io.TimeBucketKey, start, end time.Time, LimitRecordCount 
 		}
 		return nil, err
 	}
-	scanner, err := executor.NewReader(parseResult, disableVariableCompression, enableLastKnown)
+	scanner, err := executor.NewReader(parseResult, enableLastKnown)
 	if err != nil {
 		log.Error("Unable to create scanner: %s\n", err)
 		return nil, err
@@ -335,7 +335,7 @@ func executeQuery(tbk *io.TimeBucketKey, start, end time.Time, LimitRecordCount 
 }
 
 func runAggFunctions(callChain []string, csInput *io.ColumnSeries, tbk io.TimeBucketKey,
-	disableVariableCompression bool) (cs *io.ColumnSeries, err error) {
+	catDir *catalog.Directory) (cs *io.ColumnSeries, err error) {
 	cs = nil
 	for _, call := range callChain {
 		if cs != nil {
@@ -350,7 +350,7 @@ func runAggFunctions(callChain []string, csInput *io.ColumnSeries, tbk io.TimeBu
 		if agg == nil {
 			return nil, fmt.Errorf("No function in the UDA Registry named \"%s\"", aggName)
 		}
-		aggfunc, argMap := agg.New(disableVariableCompression)
+		aggfunc, argMap := agg.New()
 		aggfunc.SetTimeBucketKey(tbk)
 
 		err = argMap.PrepareArguments(parameterList)
@@ -379,7 +379,7 @@ func runAggFunctions(callChain []string, csInput *io.ColumnSeries, tbk io.TimeBu
 		/*
 			Execute the aggregate function
 		*/
-		if err = aggfunc.Accum(csInput); err != nil {
+		if err = aggfunc.Accum(csInput, catDir); err != nil {
 			return nil, err
 		}
 		cs = aggfunc.Output()
